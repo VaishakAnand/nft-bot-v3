@@ -11,6 +11,7 @@ import { default as abis } from "./abis.js";
 import { isForexCurrentlyOpen, isForexPair, startForexMonitoring } from "./forex.js";
 import { NonceManager } from "./NonceManager.js";
 import { NFTManager } from "./NftManager.js";
+const server = require('http').createServer(app);
 
 // Load base .env file first
 dotenv.config();
@@ -797,7 +798,7 @@ function wss() {
 				const sl = parseFloat(openTrade.sl)/1e10;
 				const open = parseFloat(openTrade.openPrice)/1e10;
 				const lev = parseFloat(openTrade.leverage);
-				const liqPrice = buy ? open - 0.9/lev*open : open + 0.9/lev*open;
+				const liqPrice = buy ? open - 0.89/lev*open : open + 0.89/lev*open;
 
 				if(tp !== 0 && ((buy && price >= tp) || (!buy && price <= tp))) {
 					orderType = 0;
@@ -1068,3 +1069,10 @@ if(AUTO_HARVEST_SEC > 0){
 		}
 	}, AUTO_HARVEST_SEC*1000);
 }
+
+// -------------------------------------------------
+// 14. CREATE SERVER (USEFUL FOR CLOUD PLATFORMS)
+// -------------------------------------------------
+
+const port = process.env.PORT || 4002;
+server.listen(port, () => console.log(`Listening on port ${port}`));
