@@ -207,7 +207,7 @@ function checkWssAlive(){
 	setTimeout(() => {
 		console.log("Blocks: ", blocks);
 		for(var i = 0; i < WSS_URLS.length; i++){
-			if(blocks[i] >= blocks[selectedProvider] + 5){
+			if(blocks[i] >= blocks[selectedProvider] + 2){
 				console.log("Switched to WSS "+WSS_URLS[i]+" #"+i+" (" + blocks[i] + " vs " + blocks[selectedProvider]+")");
 				selectProvider(i);
 				break;
@@ -658,7 +658,7 @@ function wss(){
 					const sl = parseFloat(t.sl)/1e10;
 					const open = parseFloat(t.openPrice)/1e10;
 					const lev = parseFloat(t.leverage);
-					const liqPrice = buy ? open - 0.9/lev*open : open + 0.9/lev*open;
+					const liqPrice = buy ? open - 0.89/lev*open : open + 0.89/lev*open;
 
 					if(tp.toString() !== "0" && ((buy && price >= tp) || (!buy && price <= tp))){
 						orderType = 0;
