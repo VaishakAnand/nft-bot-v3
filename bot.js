@@ -12,6 +12,7 @@ import { isForexCurrentlyOpen, isForexPair, startForexMonitoring } from "./forex
 import { NonceManager } from "./NonceManager.js";
 import { NFTManager } from "./NftManager.js";
 import http from "http";
+import express from "express";
 
 // Load base .env file first
 dotenv.config();
@@ -1075,5 +1076,6 @@ if(AUTO_HARVEST_SEC > 0){
 // -------------------------------------------------
 
 const port = process.env.PORT || 4002;
-const server = http.createServer();
+const app = express();
+const server = http.createServer(app);
 server.listen(port, () => console.log(`Listening on port ${port}`));
