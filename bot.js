@@ -11,7 +11,7 @@ import { default as abis } from "./abis.js";
 import { isForexCurrentlyOpen, isForexPair, startForexMonitoring } from "./forex.js";
 import { NonceManager } from "./NonceManager.js";
 import { NFTManager } from "./NftManager.js";
-const server = require('http').createServer(app);
+import http from "http";
 
 // Load base .env file first
 dotenv.config();
@@ -1075,4 +1075,5 @@ if(AUTO_HARVEST_SEC > 0){
 // -------------------------------------------------
 
 const port = process.env.PORT || 4002;
+const server = http.createServer();
 server.listen(port, () => console.log(`Listening on port ${port}`));
