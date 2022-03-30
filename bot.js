@@ -67,9 +67,12 @@ const MAX_GAS_PRICE_GWEI = parseInt(process.env.MAX_GAS_PRICE_GWEI, 10),
 	  PRIORITY_GWEI_MULTIPLIER = parseFloat(process.env.PRIORITY_GWEI_MULTIPLIER),
 	  MIN_PRIORITY_GWEI = parseFloat(process.env.MIN_PRIORITY_GWEI),
 	  OPEN_TRADES_REFRESH_MS = (process.env.OPEN_TRADES_REFRESH_SEC ?? '').length > 0 ? parseFloat(process.env.OPEN_TRADES_REFRESH_SEC) * 1000 : 120,
-	  GAS_REFRESH_INTERVAL_MS = (process.env.GAS_REFRESH_INTERVAL_SEC ?? '').length > 0 ? parseFloat(process.env.GAS_REFRESH_INTERVAL_SEC) * 1000 : 3;
+	  GAS_REFRESH_INTERVAL_MS = (process.env.GAS_REFRESH_INTERVAL_SEC ?? '').length > 0 ? parseFloat(process.env.GAS_REFRESH_INTERVAL_SEC) * 1000 : 3,
+	  WEB3_LIVENESS_CHECK_INTERVAL_MS = (process.env.WEB3_LIVENESS_CHECK_INTERVAL_SEC ?? '').length > 0 ? parseFloat(process.env.WEB3_LIVENESS_CHECK_INTERVAL_SEC) * 1000 : 10;
 
-const CHAIN_ID = 137; // Polygon chain id
+const CHAIN_ID = process.env.CHAIN_ID ?? 137; // Polygon chain id
+const CHAIN = process.env.CHAIN ?? "mainnet";
+const HARDFORK = process.env.HARDFORK ?? "london";
 
 // Start monitoring forex
 startForexMonitoring();
@@ -91,7 +94,10 @@ async function checkLinkAllowance() {
 				maxPriorityFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxPriorityFee * 1e9),
 				maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxFee * 1e9),
 				gas: currentlySelectedWeb3Client.utils.toHex("100000"),
-				nonce: nonceManager.getNextNonce()
+				nonce: nonceManager.getNextNonce(),
+				chainId: CHAIN_ID,
+				chain: CHAIN,
+				hardfork: HARDFORK
 			};
 
 			try {
@@ -131,7 +137,7 @@ async function setCurrentWeb3Client(newWeb3ClientIndex){
 	eventSubTrading = null;
 	eventSubCallbacks = null;
 
-	storageContract = new newWeb3Client.eth.Contract(abis.STORAGE, process.env.STORAGE_ADDRESS, { handleRevert: true });
+	storageContract = new newWeb3Client.eth.Contract(abis.STORAGE, process.env.STORAGE_ADDRESS);
 
 	// Retrieve all necessary details from the storage contract
 	const [
@@ -163,7 +169,7 @@ async function setCurrentWeb3Client(newWeb3ClientIndex){
 	nftRewardsContract = new newWeb3Client.eth.Contract(abis.NFT_REWARDS, nftRewardsAddress);
 
 	callbacksContract = new newWeb3Client.eth.Contract(abis.CALLBACKS, callbacksAddress);
-	tradingContract = new newWeb3Client.eth.Contract(abis.TRADING, tradingAddress, { handleRevert: true });
+	tradingContract = new newWeb3Client.eth.Contract(abis.TRADING, tradingAddress);
 	vaultContract = new newWeb3Client.eth.Contract(abis.VAULT, vaultAddress);
 
 	linkContract = new newWeb3Client.eth.Contract(abis.LINK, linkAddress);
@@ -240,7 +246,13 @@ for(var web3ProviderUrlIndex = 0; web3ProviderUrlIndex < WEB3_PROVIDER_URLS.leng
 	web3Clients.push(createWeb3Client(WEB3_PROVIDER_URLS[web3ProviderUrlIndex], nonceManager));
 }
 
-const MAX_PROVIDER_BLOCK_DRIFT = 2;
+let MAX_PROVIDER_BLOCK_DRIFT = (process.env.MAX_PROVIDER_BLOCK_DRIFT ?? '').length > 0 ? parseInt(process.env.MAX_PROVIDER_BLOCK_DRIFT, 10) : 2;
+
+if(MAX_PROVIDER_BLOCK_DRIFT < 1) {
+	appLogger.warn(`MAX_PROVIDER_BLOCK_DRIFT is set to ${MAX_PROVIDER_BLOCK_DRIFT}; setting to minimum of 1.`);
+
+	MAX_PROVIDER_BLOCK_DRIFT = 1;
+}
 
 async function checkWeb3ClientLiveness() {
 	appLogger.info("Checking liveness of all " + WEB3_PROVIDER_URLS.length + " web3 client(s)...");
@@ -285,7 +297,7 @@ async function checkWeb3ClientLiveness() {
 		// Schedule the next check
 		setTimeout(async () => {
 			checkWeb3ClientLiveness();
-		}, 10*1000);
+		}, WEB3_LIVENESS_CHECK_INTERVAL_MS);
 	}
 
 	async function selectInitialProvider() {
@@ -590,13 +602,13 @@ function watchLiveTradingEvents(){
 // -----------------------------------------
 // 10. REFRESH INTERNAL OPEN TRADES LIST
 // -----------------------------------------
-const MAX_EVENT_RETRY_TIMES = 10;
-
 async function refreshOpenTrades(event){
 	try {
 		const currentKnownOpenTrades = knownOpenTrades;
 		const eventName = event.event;
 		const eventReturnValues = event.returnValues;
+
+		appLogger.debug(`Refreshing open trades for event ${eventName} from block ${event.blockNumber}...`);
 
 		// UNREGISTER OPEN LIMIT ORDER
 		// => IF OPEN LIMIT CANCELED OR OPEN LIMIT EXECUTED
@@ -613,9 +625,9 @@ async function refreshOpenTrades(event){
 			if(existingKnownOpenTrade !== undefined && existingKnownOpenTrade.hasOwnProperty('minPrice')) {
 				currentKnownOpenTrades.delete(tradeKey);
 
-				appLogger.debug(`Watch events ${eventName}: Removed limit for ${tradeKey}`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Removed limit for ${tradeKey}`);
 			} else {
-				appLogger.debug(`Watch events ${eventName}: Limit not found for ${tradeKey}`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Limit not found for ${tradeKey}`);
 			}
 		}
 
@@ -646,11 +658,11 @@ async function refreshOpenTrades(event){
 			if(existingKnownOpenTrade !== undefined && existingKnownOpenTrade.hasOwnProperty('minPrice')){
 				currentKnownOpenTrades.set(tradeKey, limitOrder);
 
-				appLogger.debug(`Watch events ${eventName}: Updated limit for ${tradeKey}`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Updated limit for ${tradeKey}`);
 			} else {
 				currentKnownOpenTrades.set(tradeKey, limitOrder);
 
-				appLogger.debug(`Watch events ${eventName}: Stored limit for ${tradeKey}`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Stored limit for ${tradeKey}`);
 			}
 		}
 
@@ -677,16 +689,16 @@ async function refreshOpenTrades(event){
 				if(existingKnownOpenTrade !== undefined && existingKnownOpenTrade.hasOwnProperty('openPrice')) {
 					currentKnownOpenTrades.set(tradeKey, trade);
 
-					appLogger.debug(`Watch events ${eventName}: Updated trade ${tradeKey}`);
+					appLogger.debug(`Refresh open trades from event ${eventName}: Updated trade ${tradeKey}`);
 				} else {
 					currentKnownOpenTrades.set(tradeKey, trade);
 
-					appLogger.debug(`Watch events ${eventName}: Stored trade ${tradeKey}`);
+					appLogger.debug(`Refresh open trades from event ${eventName}: Stored trade ${tradeKey}`);
 				}
 			} else {
 				currentKnownOpenTrades.delete(tradeKey);
 
-				appLogger.debug(`Watch events ${eventName}: Trade ${tradeKey} no longer open!`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Trade ${tradeKey} no longer open!`);
 			}
 		}
 
@@ -703,20 +715,20 @@ async function refreshOpenTrades(event){
 				orderType: eventReturnValues.orderType ?? 'N/A'
 			});
 
-			appLogger.info(`Watch events ${eventName}: event received for ${triggeredOrderTrackingInfoIdentifier}...`);
+			appLogger.info(`Refresh open trades from event ${eventName}: event received for ${triggeredOrderTrackingInfoIdentifier}...`);
 
 			const triggeredOrderDetails = triggeredOrders.get(triggeredOrderTrackingInfoIdentifier);
 
 			// If we were tracking this triggered order, stop tracking it now and clear the timeout so it doesn't
 			// interrupt the event loop for no reason later
 			if(triggeredOrderDetails !== undefined) {
-				appLogger.debug(`Watch events ${eventName}: We triggered order ${triggeredOrderTrackingInfoIdentifier}; clearing tracking timer.`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: We triggered order ${triggeredOrderTrackingInfoIdentifier}; clearing tracking timer.`);
 
 				clearTimeout(triggeredOrderDetails.cleanupTimerId);
 
 				triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier);
 			} else {
-				appLogger.debug(`Watch events ${eventName}: Order ${triggeredOrderTrackingInfoIdentifier} was not being tracked as triggered by us.`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Order ${triggeredOrderTrackingInfoIdentifier} was not being tracked as triggered by us.`);
 			}
 
 			const tradeKey = buildOpenTradeKey({ trader, pairIndex, index });
@@ -725,9 +737,9 @@ async function refreshOpenTrades(event){
 			if(existingKnownOpenTrade !== undefined && existingKnownOpenTrade.hasOwnProperty('openPrice')) {
 				currentKnownOpenTrades.delete(tradeKey);
 
-				appLogger.debug(`Watch events ${eventName}: Removed ${tradeKey} from known open trades.`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Removed ${tradeKey} from known open trades.`);
 			} else {
-				appLogger.debug(`Watch events ${eventName}: Trade ${tradeKey} was not found in known open trades; just ignoring.`);
+				appLogger.debug(`Refresh open trades from event ${eventName}: Trade ${tradeKey} was not found in known open trades; just ignoring.`);
 			}
 		}
 	} catch(error) {
@@ -752,7 +764,7 @@ function wss() {
 			return;
 		}
 
-		if(!allowedLink) {
+		if(allowedLink === false) {
 			appLogger.warn("LINK is not currently allowed for the configured account; unable to process any trades!");
 
 			return;
@@ -760,8 +772,8 @@ function wss() {
 
 		const messageData = JSON.parse(msg.data);
 
-		if(messageData.closes === undefined) {
-			appLogger.debug('No closes in this message; nothing to do.')
+		if(messageData.name !== "charts") {
+			appLogger.debug(`Message was not a "charts" message, was "${messageData.name}"; ignoring.`)
 
 			return;
 		}
@@ -887,27 +899,33 @@ function wss() {
 					maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
 					gas: currentlySelectedWeb3Client.utils.toHex(MAX_GAS_PER_TRANSACTION),
 					nonce: nonceManager.getNextNonce(),
-					chainId: CHAIN_ID
+					chainId: CHAIN_ID,
+					chain: CHAIN,
+					hardfork: HARDFORK,
 				};
 
 				// NOTE: technically this should execute synchronously because we're supplying all necessary details on
-				// the transaction object
+				// the transaction object up front
 				const signedTransaction = await currentlySelectedWeb3Client.eth.accounts.signTransaction(orderTransaction, process.env.PRIVATE_KEY);
-
-				triggeredOrderDetails.cleanupTimerId = setTimeout(() => {
-					if(triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
-						appLogger.debug(`Never heard back from the blockchain about triggered order ${triggeredOrderTrackingInfoIdentifier}; removed from tracking.`);
-					}
-				}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
 
 				await currentlySelectedWeb3Client.eth.sendSignedTransaction(signedTransaction.rawTransaction);
 
+				// If we successfully send the transaction, we set up a timer to make sure we've heard about its
+				// eventual completion and, if not, we clean up tracking and log that we didn't hear back
+				triggeredOrderDetails.cleanupTimerId = setTimeout(() => {
+					if(triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
+						appLogger.warn(`Never heard back from the blockchain about triggered order ${triggeredOrderTrackingInfoIdentifier}; removed from tracking.`);
+					}
+				}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
+
 				appLogger.info(`Triggered order for ${triggeredOrderTrackingInfoIdentifier} with NFT ${availableNft.id}.`);
 			} catch(error) {
-				appLogger.error(`An unexpected error occurred trying to trigger an order for ${triggeredOrderTrackingInfoIdentifier} with NFT ${availableNft.id}.`, error);
-
 				switch(error.reason) {
-					case 'NO_TRADE':
+					case "TOO_LATE":
+					case "NO_TRADE":
+					case "SAME_BLOCK_LIMIT":
+						appLogger.info(`Order missed due to "${error.reason}" error; removing order from tracking and known open trades.`);
+
 						// The trade is gone, just remove it from known trades
 						currentKnownOpenTrades.delete(openTradeKey);
 						triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier);
@@ -915,6 +933,8 @@ function wss() {
 						break;
 
 					default:
+						appLogger.error(`Order trigger transaction failed for unexpected reason "${error.reason}"; removing order from tracking and known open trades.`);
+
 						// Wait a bit and then clean from triggered orders list so it might get tried again
 						triggeredOrderDetails.cleanupTimerId = setTimeout(() => {
 							if(!triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
@@ -950,7 +970,10 @@ if(process.env.VAULT_REFILL_ENABLED === "true") {
 			maxPriorityFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxPriorityFee*1e9),
 			maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxFee*1e9),
 			gas: MAX_GAS_PER_TRANSACTION,
-			nonce: nonceManager.getNextNonce()
+			nonce: nonceManager.getNextNonce(),
+			chainId: CHAIN_ID,
+			chain: CHAIN,
+			hardfork: HARDFORK
 		};
 
 		try{
@@ -972,7 +995,10 @@ if(process.env.VAULT_REFILL_ENABLED === "true") {
 			maxPriorityFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxPriorityFee*1e9),
 			maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxFee*1e9),
 			gas: MAX_GAS_PER_TRANSACTION,
-			nonce: nonceManager.getNextNonce()
+			nonce: nonceManager.getNextNonce(),
+			chainId: CHAIN_ID,
+			chain: CHAIN,
+			hardfork: HARDFORK
 		};
 
 		try {
@@ -1005,7 +1031,10 @@ if(AUTO_HARVEST_SEC > 0){
 			maxPriorityFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxPriorityFee*1e9),
 			maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxFee*1e9),
 			gas: MAX_GAS_PER_TRANSACTION,
-			nonce: nonceManager.getNextNonce()
+			nonce: nonceManager.getNextNonce(),
+			chainId: CHAIN_ID,
+			chain: CHAIN,
+			hardfork: HARDFORK
 		};
 
 
@@ -1040,7 +1069,10 @@ if(AUTO_HARVEST_SEC > 0){
 			maxPriorityFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxPriorityFee*1e9),
 			maxFeePerGas: currentlySelectedWeb3Client.utils.toHex(standardTransactionGasFees.maxFee*1e9),
 			gas: MAX_GAS_PER_TRANSACTION,
-			nonce: nonceManager.getNextNonce()
+			nonce: nonceManager.getNextNonce(),
+			chainId: CHAIN_ID,
+			chain: CHAIN,
+			hardfork: HARDFORK
 		};
 
 
