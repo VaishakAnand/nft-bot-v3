@@ -11,8 +11,6 @@ import { default as abis } from "./abis.js";
 import { isForexCurrentlyOpen, isForexPair, startForexMonitoring } from "./forex.js";
 import { NonceManager } from "./NonceManager.js";
 import { NFTManager } from "./NftManager.js";
-import http from "http";
-import express from "express";
 
 // Load base .env file first
 dotenv.config();
@@ -1102,12 +1100,3 @@ if(AUTO_HARVEST_SEC > 0){
 		}
 	}, AUTO_HARVEST_SEC*1000);
 }
-
-// -------------------------------------------------
-// 14. CREATE SERVER (USEFUL FOR CLOUD PLATFORMS)
-// -------------------------------------------------
-
-const port = process.env.PORT || 4002;
-const app = express();
-const server = http.createServer(app);
-server.listen(port, () => console.log(`Listening on port ${port}`));
