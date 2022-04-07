@@ -207,7 +207,7 @@ function checkWssAlive(){
 	setTimeout(() => {
 		console.log("Blocks: ", blocks);
 		for(var i = 0; i < WSS_URLS.length; i++){
-			if(blocks[i] >= blocks[selectedProvider] + 2){
+			if(blocks[i] >= blocks[selectedProvider] + 3){
 				console.log("Switched to WSS "+WSS_URLS[i]+" #"+i+" (" + blocks[i] + " vs " + blocks[selectedProvider]+")");
 				selectProvider(i);
 				break;
